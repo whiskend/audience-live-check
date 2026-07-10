@@ -178,45 +178,41 @@ export function useCheckIn(): CheckInState & { readonly start: () => void } {
 
   useEffect(() => {
     mountedRef.current = true;
+    const storedSession = readStoredSession();
+    if (storedSession !== null && controllerRef.current === null) {
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      updateState({
+        status: "active",
+        message: "이제 발표 화면을 확인해 주세요.",
+      });
+      queueMicrotask(() => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        void runHeartbeatLoop(storedSession, controller).catch(
+          (error: unknown) => {
+            if (
+              controller.signal.aborted ||
+              (error instanceof DOMException && error.name === "AbortError")
+            ) {
+              return;
+            }
+            clearStoredSession();
+            controllerRef.current = null;
+            updateState({
+              status: "error",
+              message: "연결을 확인하지 못했습니다. 다시 참여해 주세요.",
+            });
+          },
+        );
+      });
+    }
+
     return () => {
       mountedRef.current = false;
       controllerRef.current?.abort();
       controllerRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const storedSession = readStoredSession();
-    if (storedSession === null || controllerRef.current !== null) {
-      return;
-    }
-
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    updateState({
-      status: "active",
-      message: "이제 발표 화면을 확인해 주세요.",
-    });
-    void runHeartbeatLoop(storedSession, controller).catch((error: unknown) => {
-      if (
-        controller.signal.aborted ||
-        (error instanceof DOMException && error.name === "AbortError")
-      ) {
-        return;
-      }
-      clearStoredSession();
-      controllerRef.current = null;
-      updateState({
-        status: "error",
-        message: "연결을 확인하지 못했습니다. 다시 참여해 주세요.",
-      });
-    });
-
-    return () => {
-      controller.abort();
-      if (controllerRef.current === controller) {
-        controllerRef.current = null;
-      }
     };
   }, [runHeartbeatLoop, updateState]);
 

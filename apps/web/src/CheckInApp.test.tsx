@@ -1,5 +1,6 @@
 import type { CheckInResponse } from "@live-check-in-demo/shared";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCheckIn, sendHeartbeat } from "./api-client";
 import { CheckInApp } from "./CheckInApp";
@@ -137,5 +138,29 @@ describe("CheckInApp", () => {
 
     expect(window.localStorage.getItem("live-check-in-session")).toBeNull();
     expect(mockedSendHeartbeat).not.toHaveBeenCalled();
+  });
+
+  it("starts one restored heartbeat loop under StrictMode", async () => {
+    window.localStorage.setItem(
+      "live-check-in-session",
+      JSON.stringify(session()),
+    );
+    mockedSendHeartbeat.mockResolvedValue({
+      ok: true,
+      receivedAt: new Date().toISOString(),
+      servedBy: "test-api",
+    });
+
+    render(
+      <StrictMode>
+        <CheckInApp />
+      </StrictMode>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedSendHeartbeat).toHaveBeenCalledTimes(1);
   });
 });
