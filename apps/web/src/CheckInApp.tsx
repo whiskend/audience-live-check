@@ -24,8 +24,7 @@ export function CheckInApp(): ReactElement {
         }
       >
         <p className="eyebrow">LIVE CHECK-IN</p>
-        <h1 id="service-title">발표 데모에 참여해 주세요.</h1>
-        <p className="privacy-note">별도의 개인정보는 저장하지 않습니다.</p>
+        <h1 id="service-title">데모에 참여해 주세요.</h1>
         <button
           className="check-in-button"
           type="button"
@@ -33,11 +32,11 @@ export function CheckInApp(): ReactElement {
           onClick={start}
         >
           {status === "starting"
-            ? "참여 중..."
+            ? "연결 중"
             : status === "active"
-              ? "다시 요청하기"
+              ? "한 번 더 참여하기"
               : status === "completed"
-                ? "다시 요청하기"
+                ? "한 번 더 참여하기"
                 : "참여하기"}
         </button>
         {statusLabel !== null ? (
