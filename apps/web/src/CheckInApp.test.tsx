@@ -34,9 +34,28 @@ describe("CheckInApp", () => {
     render(<CheckInApp />);
 
     expect(
-      screen.getByRole("heading", { name: "발표 데모에 참여해 주세요." }),
+      screen.getByRole("heading", { name: "데모에 참여해 주세요." }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("별도의 개인정보는 저장하지 않습니다."),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "참여하기" })).toBeEnabled();
+  });
+
+  it("offers an explicit repeat action after check-in starts", async () => {
+    mockedCreateCheckIn.mockResolvedValue(session());
+    mockedSendHeartbeat.mockImplementation(() => new Promise(() => undefined));
+    render(<CheckInApp />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "참여하기" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByRole("button", { name: "한 번 더 참여하기" }),
+    ).toBeEnabled();
   });
 
   it("starts a fresh session for each request and cancels the previous heartbeat", async () => {
@@ -57,10 +76,14 @@ describe("CheckInApp", () => {
 
     expect(mockedCreateCheckIn).toHaveBeenCalledTimes(1);
     expect(mockedSendHeartbeat).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "다시 요청하기" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "한 번 더 참여하기" }),
+    ).toBeEnabled();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "다시 요청하기" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "한 번 더 참여하기" }),
+      );
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -139,7 +162,7 @@ describe("CheckInApp", () => {
 
     expect(
       screen
-        .getByRole("heading", { name: "발표 데모에 참여해 주세요." })
+        .getByRole("heading", { name: "데모에 참여해 주세요." })
         .closest("section"),
     ).toHaveAttribute("data-served-by", "task-b");
   });
