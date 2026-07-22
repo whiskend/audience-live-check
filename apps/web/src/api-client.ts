@@ -7,10 +7,14 @@ import {
 import ky from "ky";
 
 const configuredBaseUrl = import.meta.env["VITE_API_BASE_URL"];
-const apiBaseUrl = resolveApiBaseUrl(configuredBaseUrl);
+const apiBaseUrl = resolveApiBaseUrl(configuredBaseUrl, import.meta.env.PROD);
 
-function resolveApiBaseUrl(configuredValue: string | undefined): string {
-  const value = configuredValue?.trim() || "http://localhost:8080";
+export function resolveApiBaseUrl(
+  configuredValue: string | undefined,
+  isProduction = false,
+): string {
+  const value =
+    configuredValue?.trim() || (isProduction ? "/" : "http://localhost:8080");
   if (!value.startsWith("/")) {
     return value;
   }

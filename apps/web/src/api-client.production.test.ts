@@ -33,3 +33,10 @@ it("uses the deployed site origin when the API base is the site root", async () 
   expect(request).toBeInstanceOf(Request);
   expect((request as Request).url).toBe(`${location.origin}/api/check-ins`);
 });
+
+it("defaults production builds to the deployed site origin", async () => {
+  vi.stubGlobal("location", new URL("https://audience.example/"));
+  const { resolveApiBaseUrl } = await import("./api-client");
+
+  expect(resolveApiBaseUrl(undefined, true)).toBe("https://audience.example/");
+});
