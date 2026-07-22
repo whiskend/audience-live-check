@@ -197,6 +197,7 @@ export function useCheckIn(): CheckInState & { readonly start: () => void } {
         ) {
           return;
         }
+        console.error("Audience check-in failed", error);
         controllerRef.current = null;
         updateState({
           status: "error",
