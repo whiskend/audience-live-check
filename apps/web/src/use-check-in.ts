@@ -8,6 +8,12 @@ import {
   saveStoredSession,
 } from "./check-in-storage";
 import {
+  DEMO_LOAD_PROFILES,
+  type DemoLoadProfileName,
+  isDemoLoadOperatorPage,
+  runDemoLoad,
+} from "./demo-load";
+import {
   createObservationSignalClient,
   type ObservationSignalClient,
 } from "./observation-signal-client";
@@ -28,15 +34,44 @@ type CheckInState = {
   readonly servedBy: string | null;
 };
 
+export type DemoLoadState = {
+  readonly available: boolean;
+  readonly attempted: number;
+  readonly failed: number;
+  readonly observed: number;
+  readonly status: "idle" | "running" | "completed" | "partial" | "error";
+  readonly succeeded: number;
+  readonly target: number;
+};
+
+const INITIAL_DEMO_LOAD_STATE: DemoLoadState = {
+  available: false,
+  attempted: 0,
+  failed: 0,
+  observed: 0,
+  status: "idle",
+  succeeded: 0,
+  target: DEMO_LOAD_PROFILES.warning.requestCount,
+};
+
 const INITIAL_STATE: CheckInState = {
   status: "idle",
   message: "발표 데모에 참여해 주세요.",
   servedBy: null,
 };
 
-export function useCheckIn(): CheckInState & { readonly start: () => void } {
+export function useCheckIn(): CheckInState & {
+  readonly demoLoad: DemoLoadState;
+  readonly start: () => void;
+  readonly startDemoLoad: (profileName: DemoLoadProfileName) => void;
+  readonly stopDemoLoad: () => void;
+} {
   const [state, setState] = useState<CheckInState>(INITIAL_STATE);
+  const [demoLoad, setDemoLoad] = useState<DemoLoadState>(
+    INITIAL_DEMO_LOAD_STATE,
+  );
   const controllerRef = useRef<AbortController | null>(null);
+  const demoLoadControllerRef = useRef<AbortController | null>(null);
   const lastServedByRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const observationSignalRef = useRef<ObservationSignalClient | null>(null);
@@ -209,14 +244,110 @@ export function useCheckIn(): CheckInState & { readonly start: () => void } {
   useEffect(() => {
     const client = createObservationSignalClient();
     observationSignalRef.current = client;
+    setDemoLoad((current) => ({
+      ...current,
+      available: client !== null && isDemoLoadOperatorPage(),
+    }));
 
     return () => {
+      demoLoadControllerRef.current?.abort();
+      demoLoadControllerRef.current = null;
       client?.dispose();
       if (observationSignalRef.current === client) {
         observationSignalRef.current = null;
       }
     };
   }, []);
+
+  const stopDemoLoad = useCallback((): void => {
+    demoLoadControllerRef.current?.abort();
+    demoLoadControllerRef.current = null;
+    setDemoLoad((current) => ({
+      ...current,
+      status: "idle",
+    }));
+  }, []);
+
+  const startDemoLoad = useCallback(
+    (profileName: DemoLoadProfileName): void => {
+      const profile = DEMO_LOAD_PROFILES[profileName];
+      const signalClient = observationSignalRef.current;
+
+      if (signalClient === null) {
+        setDemoLoad((current) => ({ ...current, status: "error" }));
+        return;
+      }
+
+      demoLoadControllerRef.current?.abort();
+      const controller = new AbortController();
+      demoLoadControllerRef.current = controller;
+      setDemoLoad((current) => ({
+        ...current,
+        attempted: 0,
+        failed: 0,
+        observed: 0,
+        succeeded: 0,
+        status: "running",
+        target: profile.requestCount,
+      }));
+
+      void runDemoLoad({
+        profile,
+        createCheckIn,
+        onProgress: (attempted) => {
+          if (
+            mountedRef.current &&
+            !controller.signal.aborted &&
+            demoLoadControllerRef.current === controller
+          ) {
+            setDemoLoad((current) => ({ ...current, attempted }));
+          }
+        },
+        recordSuccessfulRequest: () => signalClient.recordSuccessfulRequest(),
+        signal: controller.signal,
+      }).then(
+        (result) => {
+          if (
+            !mountedRef.current ||
+            controller.signal.aborted ||
+            demoLoadControllerRef.current !== controller
+          ) {
+            return;
+          }
+          demoLoadControllerRef.current = null;
+          setDemoLoad((current) => ({
+            ...current,
+            attempted: result.attempted,
+            failed: result.failed,
+            observed: result.observed,
+            status:
+              result.succeeded === 0
+                ? "error"
+                : result.failed === 0 && result.observed === result.succeeded
+                  ? "completed"
+                  : "partial",
+            succeeded: result.succeeded,
+          }));
+        },
+        (error: unknown) => {
+          if (
+            controller.signal.aborted ||
+            (error instanceof DOMException && error.name === "AbortError")
+          ) {
+            return;
+          }
+          if (demoLoadControllerRef.current !== controller) {
+            return;
+          }
+          demoLoadControllerRef.current = null;
+          if (mountedRef.current) {
+            setDemoLoad((current) => ({ ...current, status: "error" }));
+          }
+        },
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -261,5 +392,5 @@ export function useCheckIn(): CheckInState & { readonly start: () => void } {
     };
   }, [runHeartbeatLoop, updateState]);
 
-  return { ...state, start };
+  return { ...state, demoLoad, start, startDemoLoad, stopDemoLoad };
 }

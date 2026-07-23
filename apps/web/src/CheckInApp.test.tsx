@@ -32,6 +32,10 @@ function session(
   };
 }
 
+function enablePresenterDemoLoad(): void {
+  window.history.replaceState(null, "", "/?sketchcatch_demo_load=presenter");
+}
+
 beforeEach(() => {
   mockedCreateObservationSignalClient.mockReturnValue({
     dispose: disposeObservationSignal,
@@ -40,8 +44,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.history.replaceState(null, "", "/");
   window.localStorage.clear();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -56,6 +62,93 @@ describe("CheckInApp", () => {
       screen.queryByText("별도의 개인정보는 저장하지 않습니다."),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "참여하기" })).toBeEnabled();
+    expect(
+      screen.queryByRole("button", {
+        name: "AI \uacbd\uace0 \ub370\ubaa8 \u00b7 24\uac74",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("runs a bounded 24-request demo load through real check-ins and observation receipts", async () => {
+    vi.useFakeTimers();
+    enablePresenterDemoLoad();
+    mockedCreateCheckIn.mockResolvedValue(session());
+    render(<CheckInApp />);
+
+    expect(
+      screen.getByRole("button", {
+        name: "AI \uacbd\uace0 \ub370\ubaa8 \u00b7 24\uac74",
+      }),
+    ).toBeEnabled();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "AI \uacbd\uace0 \ub370\ubaa8 \u00b7 24\uac74",
+        }),
+      );
+      await vi.runAllTimersAsync();
+    });
+
+    expect(mockedCreateCheckIn).toHaveBeenCalledTimes(24);
+    expect(recordSuccessfulRequest).toHaveBeenCalledTimes(24);
+    expect(
+      screen.getByText(
+        "\uad00\uce21 \uc2e0\ud638 24\uac74 \uc804\uc1a1 \uc644\ub8cc",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "AI \uacbd\uace0 \ub370\ubaa8 \u00b7 24\uac74",
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Fargate \ud655\uc7a5 \uac80\uc99d \u00b7 \ucd5c\ub300 5 RPS \u00b7 900\uac74",
+      }),
+    ).toBeEnabled();
+  });
+
+  it("asks for confirmation before starting the 900-request scale-out load", () => {
+    enablePresenterDemoLoad();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<CheckInApp />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Fargate \ud655\uc7a5 \uac80\uc99d \u00b7 \ucd5c\ub300 5 RPS \u00b7 900\uac74",
+      }),
+    );
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(mockedCreateCheckIn).not.toHaveBeenCalled();
+  });
+
+  it("does not claim completion when every demo request fails", async () => {
+    vi.useFakeTimers();
+    mockedCreateCheckIn.mockRejectedValue(new Error("upstream unavailable"));
+    enablePresenterDemoLoad();
+    render(<CheckInApp />);
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "AI \uacbd\uace0 \ub370\ubaa8 \u00b7 24\uac74",
+        }),
+      );
+      await vi.runAllTimersAsync();
+    });
+
+    expect(mockedCreateCheckIn).toHaveBeenCalledTimes(24);
+    expect(recordSuccessfulRequest).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "\uad00\uce21 \uc5f0\uacb0\uc744 \ud655\uc778\ud574 \uc8fc\uc138\uc694.",
+    );
+    expect(
+      screen.queryByText(
+        "\uad00\uce21 \uc2e0\ud638 0\uac74 \uc804\uc1a1 \uc644\ub8cc",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("records successful check-in and heartbeat traffic for live observation", async () => {
